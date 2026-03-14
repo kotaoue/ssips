@@ -4,7 +4,7 @@ A macOS `sips` wrapper that supports ImageMagick-style crop geometry.
 
 ## Usage
 
-```
+```text
 ssips <WxH+X+Y> <input> [--out <output>]
 
   WxH+X+Y  crop geometry (width x height + left + top)
