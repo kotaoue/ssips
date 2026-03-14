@@ -1,0 +1,54 @@
+#!/bin/bash
+# ssips - sips wrapper for ImageMagick-style crop syntax
+# Usage: ssips <WxH+X+Y> <input> [--out <output>]
+#
+# Crops <input> to a WxH region whose top-left corner is at (X, Y),
+# equivalent to ImageMagick: convert input -crop WxH+X+Y output
+
+set -euo pipefail
+
+usage() {
+    echo "Usage: ssips <WxH+X+Y> <input> [--out <output>]" >&2
+    echo "  WxH+X+Y  crop geometry (width x height + left + top)" >&2
+    exit 1
+}
+
+if [[ $# -lt 2 ]]; then
+    usage
+fi
+
+crop_spec="$1"
+input="$2"
+shift 2
+
+# Parse WxH+X+Y
+if [[ "$crop_spec" =~ ^([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)$ ]]; then
+    crop_w="${BASH_REMATCH[1]}"
+    crop_h="${BASH_REMATCH[2]}"
+    crop_x="${BASH_REMATCH[3]}"
+    crop_y="${BASH_REMATCH[4]}"
+else
+    echo "Error: invalid crop geometry '$crop_spec'. Expected WxH+X+Y (e.g. 480x240+0+0)" >&2
+    usage
+fi
+
+# Get image dimensions
+if ! img_info=$(sips -g pixelWidth -g pixelHeight "$input" 2>&1); then
+    echo "Error: could not read image properties from '$input'" >&2
+    exit 1
+fi
+img_w=$(echo "$img_info" | awk '/pixelWidth/{print $2}')
+img_h=$(echo "$img_info" | awk '/pixelHeight/{print $2}')
+if [[ -z "$img_w" || -z "$img_h" ]]; then
+    echo "Error: '$input' does not appear to be a valid image" >&2
+    exit 1
+fi
+
+# Calculate cropOffset values (distance from image center to crop-window center).
+# sips --cropOffset takes pixelsH (vertical) then pixelsW (horizontal).
+# Integer division truncates toward zero, which rounds the crop window toward
+# the image center when dimensions are odd — acceptable since sips uses integer pixels.
+offset_w=$(( crop_x + crop_w / 2 - img_w / 2 ))
+offset_h=$(( crop_y + crop_h / 2 - img_h / 2 ))
+
+exec sips -c "$crop_h" "$crop_w" --cropOffset "$offset_h" "$offset_w" "$input" "$@"
