@@ -19,54 +19,6 @@ FAIL=0
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 
-# get_png_dims <file>  → prints "<W>x<H>"
-get_png_dims() {
-    python3 - "$1" <<'PY'
-import sys, struct
-with open(sys.argv[1], 'rb') as f:
-    f.read(8)        # PNG signature
-    f.read(4)        # IHDR length
-    f.read(4)        # "IHDR"
-    w = struct.unpack('>I', f.read(4))[0]
-    h = struct.unpack('>I', f.read(4))[0]
-print(f"{w}x{h}")
-PY
-}
-
-# pixels_equal <file1> <file2>  → exits 0 if identical pixel-by-pixel
-pixels_equal() {
-    python3 - "$@" <<'PY'
-import sys, struct, zlib
-def read_pixels(path):
-    with open(path, 'rb') as f:
-        data = f.read()
-    pos, w, h, idat = 8, 0, 0, b''
-    while pos < len(data):
-        n = struct.unpack('>I', data[pos:pos+4])[0]
-        t = data[pos+4:pos+8]
-        d = data[pos+8:pos+8+n]
-        pos += 12 + n
-        if t == b'IHDR':
-            w, h = struct.unpack('>II', d[:8])
-        elif t == b'IDAT':
-            idat += d
-    raw = zlib.decompress(idat)
-    stride = w * 3 + 1
-    pixels = [(raw[y*stride+1+x*3], raw[y*stride+1+x*3+1], raw[y*stride+1+x*3+2])
-              for y in range(h) for x in range(w)]
-    return w, h, pixels
-w1, h1, p1 = read_pixels(sys.argv[1])
-w2, h2, p2 = read_pixels(sys.argv[2])
-if (w1, h1) != (w2, h2):
-    print(f"Size mismatch: {w1}x{h1} vs {w2}x{h2}")
-    sys.exit(1)
-bad = [(i, a, b) for i, (a, b) in enumerate(zip(p1, p2)) if a != b]
-if bad:
-    print(f"{len(bad)} pixel(s) differ")
-    sys.exit(1)
-PY
-}
-
 # ---------------------------------------------------------------------------
 # Mock sips
 # ---------------------------------------------------------------------------
@@ -215,28 +167,22 @@ run "out_of_bounds_exits_nonzero" test_out_of_bounds
 # 5. Crop the white top half from the bicolor fixture
 #    Source : tests/bicolor_50x100.png (50×100, rows 0–49 white, rows 50–99 black)
 #    Crop   : 50×50+0+0  (top-left 50×50 region)
-#    Expect : 50×50, pixel-for-pixel identical to tests/white_50x50.png
+#    Expect : byte-for-byte identical to tests/white_50x50.png
 test_crop_white_top_half() {
     "$SSIPS" "50x50+0+0" "$TESTS_DIR/bicolor_50x100.png" \
         --out "$WORK/cropped_white.png" 2>/dev/null
-    local dims
-    dims=$(get_png_dims "$WORK/cropped_white.png")
-    [[ "$dims" == "50x50" ]] || { echo "  Expected 50x50, got $dims" >&2; return 1; }
-    pixels_equal "$WORK/cropped_white.png" "$TESTS_DIR/white_50x50.png"
+    cmp "$WORK/cropped_white.png" "$TESTS_DIR/white_50x50.png"
 }
 run "crop_top_half_matches_white_reference" test_crop_white_top_half
 
 # 6. Crop the black bottom half from the bicolor fixture
 #    Source : tests/bicolor_50x100.png
 #    Crop   : 50×50+0+50  (bottom 50×50 region)
-#    Expect : 50×50, pixel-for-pixel identical to tests/black_50x50.png
+#    Expect : byte-for-byte identical to tests/black_50x50.png
 test_crop_black_bottom_half() {
     "$SSIPS" "50x50+0+50" "$TESTS_DIR/bicolor_50x100.png" \
         --out "$WORK/cropped_black.png" 2>/dev/null
-    local dims
-    dims=$(get_png_dims "$WORK/cropped_black.png")
-    [[ "$dims" == "50x50" ]] || { echo "  Expected 50x50, got $dims" >&2; return 1; }
-    pixels_equal "$WORK/cropped_black.png" "$TESTS_DIR/black_50x50.png"
+    cmp "$WORK/cropped_black.png" "$TESTS_DIR/black_50x50.png"
 }
 run "crop_bottom_half_matches_black_reference" test_crop_black_bottom_half
 
