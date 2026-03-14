@@ -1,5 +1,7 @@
 # ssips
 
+[![test](https://github.com/kotaoue/ssips/actions/workflows/test.yml/badge.svg)](https://github.com/kotaoue/ssips/actions/workflows/test.yml)
+
 A macOS `sips` wrapper that supports ImageMagick-style crop geometry.
 
 ## Usage
