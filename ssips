@@ -44,11 +44,29 @@ if [[ -z "$img_w" || -z "$img_h" ]]; then
     exit 1
 fi
 
-# Calculate cropOffset values (distance from image center to crop-window center).
-# sips --cropOffset takes pixelsH (vertical) then pixelsW (horizontal).
-# Integer division truncates toward zero, which rounds the crop window toward
-# the image center when dimensions are odd — acceptable since sips uses integer pixels.
-offset_w=$(( crop_x + crop_w / 2 - img_w / 2 ))
-offset_h=$(( crop_y + crop_h / 2 - img_h / 2 ))
 
+# Crop範囲が画像外にはみ出す場合でも、画像内の範囲だけクロップ（ImageMagick互換）
+if (( crop_x < 0 )); then crop_w=$(( crop_w + crop_x )); crop_x=0; fi
+if (( crop_y < 0 )); then crop_h=$(( crop_h + crop_y )); crop_y=0; fi
+if (( crop_x + crop_w > img_w )); then crop_w=$(( img_w - crop_x )); fi
+if (( crop_y + crop_h > img_h )); then crop_h=$(( img_h - crop_y )); fi
+# 無効な範囲はエラー
+if (( crop_w <= 0 || crop_h <= 0 )); then
+    echo "Error: crop region is outside image bounds or too small" >&2
+    exit 1
+fi
+
+# Calculate cropOffset values.
+# sips --cropOffset specifies the top-left corner of the crop region.
+# Format: --cropOffset offsetY offsetX (pixels from top, pixels from left)
+# Note: sips treats (0,0) as "no offset" (center crop), so we use 1 instead of 0.
+offset_w="$crop_x"
+offset_h="$crop_y"
+if (( offset_w == 0 && offset_h == 0 )); then
+    # Both are 0: use (1, 1) to crop from top-left
+    offset_w=1
+    offset_h=1
+fi
+
+echo "sips -c $crop_h $crop_w --cropOffset $offset_h $offset_w $input $@" >&2
 exec sips -c "$crop_h" "$crop_w" --cropOffset "$offset_h" "$offset_w" "$input" "$@"
